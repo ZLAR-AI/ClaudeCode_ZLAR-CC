@@ -1,0 +1,16 @@
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": ".*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "./.claude/hooks/zlar-gate.sh",
+            "timeout": 310
+          }
+        ]
+      }
+    ]
+  }
+}

@@ -1,0 +1,153 @@
+# ZLAR Policy Configuration
+# This file defines what actions are protected and who can authorize them.
+# It is cryptographically signed by humans. AI cannot modify this file.
+
+version: "1.0"
+name: "my-policy"
+
+# Target API that agents are calling through ZLAR
+target:
+  baseUrl: "http://localhost:4000"
+
+# Designated human authorizers
+authorizers:
+  - id: "admin-1"
+    name: "Your Name"
+    role: "owner"
+    telegramChatId: "YOUR_TELEGRAM_CHAT_ID"  # Get this from @userinfobot on Telegram
+
+# Protection rules — checked in order, first match wins
+rules:
+
+  # === SHELL COMMANDS ===
+  # All command execution requires approval. No exceptions.
+  - id: "protect-exec"
+    description: "All shell command execution requires authorization"
+    match:
+      method: "POST"
+      path: "/exec"
+    action: "protect"
+    authorizers: ["admin-1"]
+    timeout: 300000
+
+  # === FILE DELETIONS ===
+  - id: "protect-delete"
+    description: "All file deletions require authorization"
+    match:
+      method: "POST"
+      path: "/file/delete"
+    action: "protect"
+    authorizers: ["admin-1"]
+    timeout: 300000
+
+  # === FILE WRITES — SENSITIVE PATHS ===
+  - id: "protect-write-ssh"
+    description: "Writes to .ssh directory require authorization"
+    match:
+      method: "POST"
+      path: "/file/write"
+      conditions:
+        - field: "path"
+          operator: "contains"
+          value: ".ssh"
+    action: "protect"
+    authorizers: ["admin-1"]
+    timeout: 300000
+
+  - id: "protect-write-env"
+    description: "Writes to .env files require authorization"
+    match:
+      method: "POST"
+      path: "/file/write"
+      conditions:
+        - field: "path"
+          operator: "contains"
+          value: ".env"
+    action: "protect"
+    authorizers: ["admin-1"]
+    timeout: 300000
+
+  # Non-sensitive file writes pass through
+  - id: "pass-write-general"
+    description: "General file writes pass through"
+    match:
+      method: "POST"
+      path: "/file/write"
+    action: "pass"
+
+  # === FILE MOVES ===
+  - id: "protect-move"
+    description: "All file moves/renames require authorization"
+    match:
+      method: "POST"
+      path: "/file/move"
+    action: "protect"
+    authorizers: ["admin-1"]
+    timeout: 300000
+
+  # === OUTBOUND NETWORK ===
+  - id: "protect-outbound"
+    description: "All outbound network requests require authorization"
+    match:
+      method: "POST"
+      path: "/net/request"
+    action: "protect"
+    authorizers: ["admin-1"]
+    timeout: 300000
+
+  - id: "protect-dns"
+    description: "All DNS lookups require authorization"
+    match:
+      method: "POST"
+      path: "/net/dns"
+    action: "protect"
+    authorizers: ["admin-1"]
+    timeout: 300000
+
+  # === READ OPERATIONS ===
+  - id: "protect-read-ssh"
+    description: "Reads of .ssh directory require authorization"
+    match:
+      method: "GET"
+      path: "/file/read"
+      conditions:
+        - field: "path"
+          operator: "contains"
+          value: ".ssh"
+    action: "protect"
+    authorizers: ["admin-1"]
+    timeout: 300000
+
+  - id: "protect-read-env"
+    description: "Reads of .env files require authorization"
+    match:
+      method: "GET"
+      path: "/file/read"
+      conditions:
+        - field: "path"
+          operator: "contains"
+          value: ".env"
+    action: "protect"
+    authorizers: ["admin-1"]
+    timeout: 300000
+
+  # Non-sensitive reads pass through
+  - id: "pass-read"
+    description: "File reads pass through"
+    match:
+      method: "GET"
+      path: "/file/read"
+    action: "pass"
+
+  - id: "pass-system-info"
+    description: "System info passes through"
+    match:
+      method: "GET"
+      path: "/system/info"
+    action: "pass"
+
+# Gateway behavior settings
+settings:
+  defaultAction: "deny"                    # Unknown actions are denied by default
+  authorizationTimeoutMs: 300000           # 5 minute default timeout
+  auditLogPath: "./audit-log/zlar-audit.ndjson"

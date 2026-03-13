@@ -1,0 +1,14 @@
+{
+  "name": "@zlar/tools",
+  "version": "0.1.0",
+  "private": true,
+  "main": "src/index.ts",
+  "scripts": {
+    "keygen": "tsx src/index.ts keygen",
+    "sign": "tsx src/index.ts sign",
+    "verify": "tsx src/index.ts verify"
+  },
+  "dependencies": {
+    "@zlar/shared": "*"
+  }
+}

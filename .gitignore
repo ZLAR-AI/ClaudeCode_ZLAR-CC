@@ -1,0 +1,56 @@
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+*.js
+*.d.ts
+*.js.map
+!jest.config.js
+
+# Environment and secrets
+.env
+.env.local
+.env.*.local
+
+# Signing keys (NEVER commit private keys)
+config/keys/
+etc/keys/*.key
+etc/keys/*.pem
+
+# Policy (your live policy — keep the examples, not your config)
+config/policy.yaml
+config/policy-mac.yaml
+config/policy.yaml.sig
+config/policy-mac.yaml.sig
+etc/policies/active.policy.json
+etc/policies/archive/
+etc/gate.json
+
+# Audit logs and runtime state
+audit-log/
+var/log/*.jsonl
+var/log/*.log
+var/log/*.state
+var/log/*.json
+var/log/*.lock
+
+# SQLite pending store
+data/
+*.db
+*.db-wal
+*.db-shm
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# npm
+*.tgz
+package-lock.json

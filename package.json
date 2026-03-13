@@ -1,0 +1,34 @@
+{
+  "name": "zlar-cc",
+  "version": "0.1.0",
+  "description": "ZLAR for Claude Code — policy enforcement gateway at the execution boundary",
+  "private": true,
+  "workspaces": [
+    "packages/shared",
+    "packages/mock-api",
+    "packages/gateway",
+    "packages/agent",
+    "packages/tools"
+  ],
+  "scripts": {
+    "build": "tsc --build tsconfig.json",
+    "clean": "tsc --build --clean tsconfig.json",
+    "dev:mock-api": "npm run dev --workspace=packages/mock-api",
+    "dev:gateway": "npm run dev --workspace=packages/gateway",
+    "dev:agent": "npm run start --workspace=packages/agent",
+    "keygen": "npm run keygen --workspace=packages/tools",
+    "sign-policy": "npm run sign --workspace=packages/tools",
+    "verify-policy": "npm run verify --workspace=packages/tools"
+  },
+  "devDependencies": {
+    "typescript": "^5.4.0",
+    "tsx": "^4.7.0",
+    "@types/node": "^20.11.0"
+  },
+  "license": "Apache-2.0",
+  "author": "ZLAR Inc.",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/zlar-inc/zlar-cc.git"
+  }
+}

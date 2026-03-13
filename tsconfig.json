@@ -1,0 +1,10 @@
+{
+  "files": [],
+  "references": [
+    { "path": "packages/shared" },
+    { "path": "packages/mock-api" },
+    { "path": "packages/gateway" },
+    { "path": "packages/agent" },
+    { "path": "packages/tools" }
+  ]
+}
