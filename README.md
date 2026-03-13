@@ -264,16 +264,17 @@ scripts/        — Start, stop, harden, unharden
 
 ## The ZLAR Family
 
+Same thesis: independent governance that does not depend on the model's cooperation. Different surfaces.
+
 | Product | Platform | What it does |
 |---------|----------|-------------|
 | **[ZLAR-OC](https://github.com/ZLAR-AI/ZLAR-OC)** | OpenClaw | OS-level containment — user isolation, kernel sandbox, pf firewall, gate daemon, signed policy, audit trail |
-| **ZLAR-CC** (this repo) | Claude Code | Hook-based gate — tool-call interception, risk classification, signed policy, Telegram approval |
+| **[ZLAR-CC](https://github.com/ZLAR-AI/ClaudeCode_ZLAR-CC)** | Claude Code | Hook-based gate — tool-call interception, risk classification, signed policy, Telegram approval |
 | **[ZLAR Gate](https://github.com/ZLAR-AI/ZLAR-Gate)** | Claude Code + Cursor + Windsurf | Universal gate — one policy across multiple editors, framework-specific adapters |
 | **[ZLAR-LT](https://github.com/ZLAR-AI/ZLAR-LT)** | Claude Code + Cursor + Windsurf | Zero-config governance — one command, instant protection, deny-heavy defaults |
-
-Same thesis. Same architecture pattern. Different enforcement surfaces.
-
----
+| **[ZLAR-AU](https://github.com/ZLAR-AI/ZLAR-AU)** | ZLAR Gate audit trail | Compliance reporting — hash chain verification, framework mapping, Splunk export |
+| **[ZLAR-NT](https://github.com/ZLAR-AI/ZLAR-NT)** | Cross-platform | Network egress policy — destination-aware, domain-level, gate-integrated |
+| **[ZLAR-FL](https://github.com/ZLAR-AI/ZLAR-FL)** | Cross-platform | Fleet governance — registry, health monitoring, audit aggregation, policy comparison |
 
 ## License
 
