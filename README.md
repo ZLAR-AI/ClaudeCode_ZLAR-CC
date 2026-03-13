@@ -157,6 +157,10 @@ ZLAR-CC fails safe. A blocked action is always safer than an unauthorized one.
 
 ---
 
+## Using Multiple Editors?
+
+**[ZLAR Gate](https://github.com/ZLAR-AI/ZLAR-Gate)** — same engine, one policy across Claude Code, Cursor, and Windsurf. If you use more than one AI coding framework, ZLAR Gate governs all of them from a single signed policy file.
+
 ## Quick Start
 
 ### Prerequisites
