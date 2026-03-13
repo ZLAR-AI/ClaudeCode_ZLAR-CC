@@ -110,27 +110,31 @@ Full classifier specification: [docs/classifier-spec.md](docs/classifier-spec.md
 
 ## Cryptographic Policy
 
-Your policy defines the rules. It's YAML — human-readable, human-authored. Signed with Ed25519.
+Your policy defines the rules. JSON — human-readable, human-authored. Signed with Ed25519.
 
-```yaml
-rules:
-  - id: "protect-exec"
-    description: "All shell commands require authorization"
-    match:
-      method: "POST"
-      path: "/exec"
-    action: "protect"
-    authorizers: ["admin-1"]
-
-  - id: "pass-read"
-    description: "File reads pass through"
-    match:
-      method: "GET"
-      path: "/file/read"
-    action: "pass"
-
-settings:
-  defaultAction: "deny"  # unknown = blocked
+```json
+{
+  "rules": [
+    {
+      "domain": "bash",
+      "detail": { "regex": "^(ls|pwd|cat|head|tail|wc|echo|date|whoami)\\b" },
+      "action": "allow",
+      "description": "Safe read-only commands"
+    },
+    {
+      "domain": "bash",
+      "detail": { "contains": "rm " },
+      "action": "ask",
+      "description": "Deletion requires approval"
+    },
+    {
+      "domain": "bash",
+      "action": "deny",
+      "description": "Everything else denied"
+    }
+  ],
+  "defaultAction": "deny"
+}
 ```
 
 The gateway refuses to start with a tampered policy. The signing key never touches the agent's environment.
@@ -157,70 +161,64 @@ ZLAR-CC fails safe. A blocked action is always safer than an unauthorized one.
 
 ### Prerequisites
 
-- Node.js 20+
-- npm 10+
-- A Telegram bot token (create via [@BotFather](https://t.me/botfather))
-- Your Telegram chat ID
+- **bash** 4+ (macOS ships 3.x — `brew install bash` if needed)
+- **jq** — JSON processor (`brew install jq` on macOS, `apt install jq` on Linux)
+- **openssl** with Ed25519 support (macOS LibreSSL may lack it — `brew install openssl`)
+- **curl**
+- A **Telegram bot token** (create via [@BotFather](https://t.me/botfather))
+- Your **Telegram chat ID** (message [@userinfobot](https://t.me/userinfobot) to get it)
 
 ### Install
 
 ```bash
-git clone https://github.com/ZLAR-AI/ZLAR-CC.git
-cd zlar-cc
+git clone https://github.com/ZLAR-AI/ClaudeCode_ZLAR-CC.git
+cd ClaudeCode_ZLAR-CC
+```
+
+### One-Command Setup
+
+```bash
+./scripts/zlar-setup.sh
+```
+
+This handles everything:
+1. Checks all prerequisites (jq, openssl Ed25519 support, curl, bash version)
+2. Copies config templates (`etc/gate.json`, policy, `.env`)
+3. Walks you through Telegram configuration
+4. Generates Ed25519 signing keypair
+5. Signs the default policy
+6. Configures Claude Code hooks in `~/.claude/settings.json`
+7. Runs verification
+
+### After Setup
+
+```bash
+# 1. Edit .env — add your Telegram bot token
+#    ZLAR_TELEGRAM_TOKEN=your_token_here
+
+# 2. Edit etc/gate.json — set your Telegram chat ID
+#    "chat_id": "123456789"
+
+# 3. Review etc/policies/active.policy.json — customize rules
+#    Then re-sign: bin/zlar-policy sign --input etc/policies/active.policy.json --key ~/.zlar-signing.key
+
+# 4. Verify anytime
+./scripts/zlar-start.sh
+```
+
+Open Claude Code. ZLAR-CC is now gating every tool call. You'll see approval requests on Telegram when Claude Code tries protected actions.
+
+### Advanced: TypeScript Gateway (v1)
+
+For complex deployments requiring a persistent HTTP gateway with SQLite persistence:
+
+```bash
 npm install
 npm run build
-```
-
-### Configure
-
-```bash
-# 1. Environment
-cp .env.example .env
-# Edit .env — add your Telegram bot token and a random API secret
-
-# 2. Policy
-cp config/policy.example.yaml config/policy.yaml
-# Edit — set your name, Telegram chat ID, and rules
-
-# 3. Generate signing keys
-npm run keygen
-
-# 4. Sign your policy
-npm run sign-policy
-```
-
-### Connect to Claude Code
-
-Copy the fail-closed hook script (recommended):
-
-```bash
-cp .claude/hooks/zlar-gate.sh ~/.claude/hooks/zlar-gate.sh
-chmod +x ~/.claude/hooks/zlar-gate.sh
-```
-
-Add to `~/.claude/settings.json`:
-
-```json
-{
-  "hooks": {
-    "PreToolUse": [
-      {
-        "type": "command",
-        "command": "~/.claude/hooks/zlar-gate.sh",
-        "timeout": 300000
-      }
-    ]
-  }
-}
-```
-
-### Start
-
-```bash
 npm run dev:gateway
 ```
 
-Open Telegram. You'll see approval requests when Claude Code tries protected actions.
+See `config/policy.example.yaml` for the YAML policy format used by v1. Most users should start with the bash gate above.
 
 ---
 
@@ -271,10 +269,6 @@ Same thesis. Same architecture pattern. Different enforcement surfaces.
 
 ---
 
-## Legal
-
-ZLAR-CC is a governance tool, not a guarantee of safety. Agentic AI is an emerging technology with inherent unpredictability. By using ZLAR-CC, you accept full responsibility for your deployment. See [LEGAL.md](LEGAL.md) for complete terms including warranty disclaimer, limitation of liability, and assumption of risk.
-
 ## License
 
 [Apache License 2.0](LICENSE) — free to use, modify, and distribute.
@@ -287,6 +281,6 @@ Copyright 2025–2026 ZLAR Inc.
 
 - **ZLAR Inc.** — [zlar.ai](https://zlar.ai) · [hello@zlar.ai](mailto:hello@zlar.ai)
 - **Vincent Nijjar** — Founder · [@VinnyNijjar](https://x.com/VinnyNijjar)
-- **Issues** — [GitHub Issues](https://github.com/ZLAR-AI/ZLAR-CC/issues)
+- **Issues** — [GitHub Issues](https://github.com/ZLAR-AI/ClaudeCode_ZLAR-CC/issues)
 
 Built by Vincent Nijjar and [ZLAR Inc.](https://zlar.ai)
