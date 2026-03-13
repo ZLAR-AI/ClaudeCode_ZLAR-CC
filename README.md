@@ -268,6 +268,7 @@ scripts/        — Start, stop, harden, unharden
 |---------|----------|-------------|
 | **[ZLAR-OC](https://github.com/ZLAR-AI/ZLAR-OC)** | OpenClaw | OS-level containment — user isolation, kernel sandbox, pf firewall, gate daemon, signed policy, audit trail |
 | **ZLAR-CC** (this repo) | Claude Code | Hook-based gate — tool-call interception, risk classification, signed policy, Telegram approval |
+| **[ZLAR Gate](https://github.com/ZLAR-AI/ZLAR-Gate)** | Claude Code + Cursor + Windsurf | Universal gate — one policy across multiple editors, framework-specific adapters |
 
 Same thesis. Same architecture pattern. Different enforcement surfaces.
 
