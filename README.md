@@ -271,6 +271,10 @@ Same thesis. Same architecture pattern. Different enforcement surfaces.
 
 ---
 
+## Legal
+
+ZLAR-CC is a governance tool, not a guarantee of safety. Agentic AI is an emerging technology with inherent unpredictability. By using ZLAR-CC, you accept full responsibility for your deployment. See [LEGAL.md](LEGAL.md) for complete terms including warranty disclaimer, limitation of liability, and assumption of risk.
+
 ## License
 
 [Apache License 2.0](LICENSE) — free to use, modify, and distribute.
