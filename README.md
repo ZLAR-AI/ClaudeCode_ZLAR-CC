@@ -264,7 +264,17 @@ scripts/        — Start, stop, harden, unharden
 
 ## The ZLAR Family
 
-Same thesis: independent governance that does not depend on the model's cooperation. Different surfaces.
+| Product | What it does |
+|---------|-------------|
+| **[ZLAR-OC](https://github.com/ZLAR-AI/ZLAR-OC)** | OS-level containment for OpenClaw — user isolation, kernel sandbox, pf firewall, gate daemon |
+| **ZLAR-CC** (this repo) | Hook-based gate for Claude Code — tool-call interception, risk classification, Telegram approval |
+| **[ZLAR-Gate](https://github.com/ZLAR-AI/ZLAR-Gate)** | Universal gate engine — Claude Code + Cursor + Windsurf adapters |
+| **[ZLAR-LT](https://github.com/ZLAR-AI/ZLAR-LT)** | Zero-config governance — `curl \| bash` → governed in 60 seconds |
+| **[ZLAR-AU](https://github.com/ZLAR-AI/ZLAR-AU)** | Audit trail analysis — compliance reports (PCI-DSS, SOC 2, OSFI B-13, SOX, EU AI Act) |
+| **[ZLAR-NT](https://github.com/ZLAR-AI/ZLAR-NT)** | Network egress policy — application-level domain/CIDR filtering |
+| **[ZLAR-FL](https://github.com/ZLAR-AI/ZLAR-FL)** | Fleet governance — multi-agent registry, policy drift detection, topology |
+
+Same thesis. Same architecture pattern. Different enforcement surfaces.
 
 | Product | Platform | What it does |
 |---------|----------|-------------|
