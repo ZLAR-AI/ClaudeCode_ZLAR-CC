@@ -2,7 +2,7 @@
   "version": "2.1.0",
   "created_at": "2026-03-01T00:00:00Z",
   "author": "your-username",
-  "description": "ZLAR v2.1 — Claude Code hook policy. Deny-first rule ordering.",
+  "description": "ZLAR v2.1 \u2014 Claude Code hook policy. Deny-first rule ordering.",
   "signature": {
     "algorithm": "ed25519",
     "public_key": "GENERATE_WITH_bin/zlar-policy_keygen",
@@ -39,7 +39,7 @@
     {
       "id": "R002",
       "enabled": true,
-      "description": "Recursive/forced deletion — halt",
+      "description": "Recursive/forced deletion \u2014 halt",
       "domain": "bash",
       "action": "deny",
       "severity": "critical",
@@ -81,7 +81,7 @@
     {
       "id": "R005",
       "enabled": true,
-      "description": "Persistence mechanisms — blocked",
+      "description": "Persistence mechanisms \u2014 blocked",
       "domain": "bash",
       "action": "deny",
       "severity": "critical",
@@ -207,7 +207,7 @@
     {
       "id": "R020",
       "enabled": true,
-      "description": "Unknown shell commands — ask human",
+      "description": "Unknown shell commands \u2014 ask human",
       "domain": "bash",
       "action": "ask",
       "severity": "warn",
@@ -224,7 +224,7 @@
     {
       "id": "R030",
       "enabled": true,
-      "description": "Write to .ssh — blocked",
+      "description": "Write to .ssh \u2014 blocked",
       "domain": "write",
       "action": "deny",
       "severity": "critical",
@@ -266,7 +266,7 @@
     {
       "id": "R036",
       "enabled": true,
-      "description": "General file writes — allow",
+      "description": "General file writes \u2014 allow",
       "domain": "write",
       "action": "allow",
       "severity": "info",
@@ -278,7 +278,7 @@
     {
       "id": "R042",
       "enabled": true,
-      "description": "General edits — allow",
+      "description": "General edits \u2014 allow",
       "domain": "edit",
       "action": "allow",
       "severity": "info",
@@ -290,7 +290,7 @@
     {
       "id": "R053",
       "enabled": true,
-      "description": "General reads — allow",
+      "description": "General reads \u2014 allow",
       "domain": "read",
       "action": "allow",
       "severity": "info",
@@ -302,7 +302,7 @@
     {
       "id": "R060",
       "enabled": true,
-      "description": "Glob searches — allow",
+      "description": "Glob searches \u2014 allow",
       "domain": "glob",
       "action": "allow",
       "severity": "info",
@@ -314,7 +314,7 @@
     {
       "id": "R061",
       "enabled": true,
-      "description": "Grep searches — allow",
+      "description": "Grep searches \u2014 allow",
       "domain": "grep",
       "action": "allow",
       "severity": "info",
@@ -326,7 +326,7 @@
     {
       "id": "R090",
       "enabled": true,
-      "description": "Web fetch — requires approval",
+      "description": "Web fetch \u2014 requires approval",
       "domain": "webfetch",
       "action": "ask",
       "severity": "warn",
@@ -341,9 +341,23 @@
       }
     },
     {
+      "id": "R060",
+      "enabled": true,
+      "description": "Allow TodoWrite, TaskOutput, plan mode, user questions \u2014 low-risk state management",
+      "domain": "state",
+      "action": "allow",
+      "severity": "info",
+      "audit": true,
+      "risk_score": {
+        "irreversibility": 0,
+        "consequence": 5,
+        "blast_radius": 0
+      }
+    },
+    {
       "id": "R091",
       "enabled": true,
-      "description": "Web search — allow",
+      "description": "Web search \u2014 allow",
       "domain": "websearch",
       "action": "allow",
       "severity": "info",
