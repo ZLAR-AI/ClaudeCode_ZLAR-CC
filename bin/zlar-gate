@@ -110,7 +110,7 @@ gen_id() {
 # ─── Audit Event Emission ──────────────────────────────────────────────────
 
 emit_event() {
-    local domain="$1" action="$2" outcome="$3" detail="$4" rule="$5" severity="$6" risk_score="${7:-0}"
+    local domain="$1" action="$2" outcome="$3" detail="$4" rule="$5" severity="$6" risk_score="${7:-0}" authorizer="${8:-system}"
     local id ts
     id=$(gen_id)
     ts=$(date -u +%Y-%m-%dT%H:%M:%SZ)
@@ -141,11 +141,12 @@ emit_event() {
         --arg policy_version "${POLICY_VERSION:-unknown}" \
         --arg severity "${severity}" \
         --arg prev_hash "${prev_hash}" \
+        --arg authorizer "${authorizer}" \
         '{id:$id,ts:$ts,seq:$seq,source:$source,host:$host,user:$user,
           agent_id:$agent_id,session_id:$session_id,domain:$domain,
           action:$action,outcome:$outcome,risk_score:$risk_score,
           detail:$detail,rule:$rule,policy_version:$policy_version,
-          severity:$severity,prev_hash:$prev_hash}')
+          severity:$severity,prev_hash:$prev_hash,authorizer:$authorizer}')
 
     if ! echo "${event}" >> "${AUDIT_FILE}" 2>/dev/null; then
         log "CRITICAL: Failed to write audit event — audit trail may be incomplete"
@@ -157,6 +158,7 @@ emit_event() {
 DOMAIN=""
 DETAIL="{}"
 TOOL_DISPLAY=""
+TELEGRAM_DENIED_BY=""
 
 translate_tool() {
     local tool_name="$1"
@@ -215,6 +217,41 @@ translate_tool() {
             DETAIL=$(echo "${tool_input}" | jq -c '{query: (.query // "")}' 2>/dev/null || echo '{"query":""}')
             TOOL_DISPLAY=$(echo "${tool_input}" | jq -r '.query // ""' 2>/dev/null)
             ;;
+        TodoWrite)
+            DOMAIN="state"
+            DETAIL=$(echo "${tool_input}" | jq -c '{todos: ((.todos // []) | length)}' 2>/dev/null || echo '{"todos":0}')
+            TOOL_DISPLAY="TodoWrite ($(echo "${tool_input}" | jq -r '(.todos // []) | length' 2>/dev/null) items)"
+            ;;
+        TaskOutput)
+            DOMAIN="state"
+            DETAIL=$(echo "${tool_input}" | jq -c '{task_id: (.task_id // "")}' 2>/dev/null || echo '{"task_id":""}')
+            TOOL_DISPLAY=$(echo "${tool_input}" | jq -r '.task_id // "task"' 2>/dev/null)
+            ;;
+        TaskStop)
+            DOMAIN="state"
+            DETAIL=$(echo "${tool_input}" | jq -c '{task_id: (.task_id // "")}' 2>/dev/null || echo '{"task_id":""}')
+            TOOL_DISPLAY="Stop: $(echo "${tool_input}" | jq -r '.task_id // "task"' 2>/dev/null)"
+            ;;
+        Skill)
+            DOMAIN="agent"
+            DETAIL=$(echo "${tool_input}" | jq -c '{skill: (.skill // ""), args: (.args // "")}' 2>/dev/null || echo '{"skill":""}')
+            TOOL_DISPLAY="Skill: $(echo "${tool_input}" | jq -r '.skill // "unknown"' 2>/dev/null)"
+            ;;
+        EnterPlanMode|ExitPlanMode)
+            DOMAIN="state"
+            DETAIL=$(jq -n -c --arg mode "${tool_name}" '{mode: $mode}')
+            TOOL_DISPLAY="${tool_name}"
+            ;;
+        AskUserQuestion)
+            DOMAIN="state"
+            DETAIL=$(echo "${tool_input}" | jq -c '{questions: ((.questions // []) | length)}' 2>/dev/null || echo '{"questions":0}')
+            TOOL_DISPLAY="AskUserQuestion"
+            ;;
+        EnterWorktree|ExitWorktree)
+            DOMAIN="state"
+            DETAIL=$(echo "${tool_input}" | jq -c '.' 2>/dev/null || echo '{}')
+            TOOL_DISPLAY="${tool_name}"
+            ;;
         *)
             DOMAIN="unknown"
             # T2-10: Safe JSON construction for unknown tools (was string interpolation)
@@ -250,6 +287,7 @@ load_policy() {
             POLICY_VERSION=$(jq -r '.version // "unknown"' "${POLICY_FILE}" 2>/dev/null)
             POLICY_DEFAULT_ACTION=$(jq -r '.default_action // "deny"' "${POLICY_FILE}" 2>/dev/null)
             POLICY_RULES_JSON=$(jq -c '.rules' "${POLICY_FILE}" 2>/dev/null)
+    # shellcheck disable=SC2034
             POLICY_LOADED="true"
             log "Policy loaded (cached, hash verified): v${POLICY_VERSION}"
             return 0
@@ -296,6 +334,7 @@ load_policy() {
     POLICY_VERSION=$(jq -r '.version // "unknown"' "${POLICY_FILE}" 2>/dev/null)
     POLICY_DEFAULT_ACTION=$(jq -r '.default_action // "deny"' "${POLICY_FILE}" 2>/dev/null)
     POLICY_RULES_JSON=$(jq -c '.rules' "${POLICY_FILE}" 2>/dev/null)
+    # shellcheck disable=SC2034
     POLICY_LOADED="true"
 
     # A4: Update verification cache with content hash
@@ -313,6 +352,7 @@ match_detail_field() {
     local matcher_json="$2"
 
     # Check each matcher type
+    # shellcheck disable=SC2034
     local op val
 
     # regex
@@ -579,6 +619,7 @@ telegram_ask() {
 *Rule:* ${rule}"
 
     # Escape special chars for Telegram Markdown
+    # shellcheck disable=SC2016
     text=$(echo "${text}" | sed 's/[_\[\]()~>#+=|{}.!-]/\\&/g' | sed 's/\\`/`/g' | sed 's/\\\*/*/g')
 
     local keyboard
@@ -653,26 +694,54 @@ telegram_ask() {
             if [ "${cb_data}" = "approve:${action_id}" ]; then
                 # Answer callback
                 telegram_api "answerCallbackQuery" "$(jq -n -c --arg id "${cb_id}" '{callback_query_id: $id, text: "Approved"}')" >/dev/null
-                # Update message
+                # Update message with structured receipt
+                local approve_ts
+                approve_ts=$(date +%H:%M:%S)
+                local elapsed_s=$(( $(date +%s) - (deadline - TELEGRAM_TIMEOUT_S) ))
+                local receipt_text="✅ *APPROVED*
+
+*Tool:* \`${tool_name}\`
+*Detail:* \`${display}\`
+*Risk:* ${risk_score}/100
+*Rule:* ${rule}
+*Decision:* Approved @ ${approve_ts}
+*Latency:* ${elapsed_s}s"
+                # shellcheck disable=SC2016
+                receipt_text=$(echo "${receipt_text}" | sed 's/[_\[\]()~>#+=|{}.!-]/\\&/g' | sed 's/\\`/`/g' | sed 's/\\*/*/g')
                 local edit_body
                 edit_body=$(jq -n -c \
                     --arg chat_id "${TELEGRAM_CHAT_ID}" \
                     --argjson msg_id "${msg_id}" \
-                    --arg text "✅ *APPROVED* — \`${display}\`" \
+                    --arg text "${receipt_text}" \
                     '{chat_id: $chat_id, message_id: $msg_id, text: $text, parse_mode: "MarkdownV2"}')
                 telegram_api "editMessageText" "${edit_body}" >/dev/null
-                log "Telegram: APPROVED by human"
+                TELEGRAM_DENIED_BY=""
+                log "Telegram: APPROVED by human (${elapsed_s}s)"
                 return 0
             elif [ "${cb_data}" = "deny:${action_id}" ]; then
                 telegram_api "answerCallbackQuery" "$(jq -n -c --arg id "${cb_id}" '{callback_query_id: $id, text: "Denied"}')" >/dev/null
+                local deny_ts
+                deny_ts=$(date +%H:%M:%S)
+                local elapsed_s=$(( $(date +%s) - (deadline - TELEGRAM_TIMEOUT_S) ))
+                local receipt_text="❌ *DENIED*
+
+*Tool:* \`${tool_name}\`
+*Detail:* \`${display}\`
+*Risk:* ${risk_score}/100
+*Rule:* ${rule}
+*Decision:* Denied @ ${deny_ts}
+*Latency:* ${elapsed_s}s"
+                # shellcheck disable=SC2016
+                receipt_text=$(echo "${receipt_text}" | sed 's/[_\[\]()~>#+=|{}.!-]/\\&/g' | sed 's/\\`/`/g' | sed 's/\\*/*/g')
                 local edit_body
                 edit_body=$(jq -n -c \
                     --arg chat_id "${TELEGRAM_CHAT_ID}" \
                     --argjson msg_id "${msg_id}" \
-                    --arg text "❌ *DENIED* — \`${display}\`" \
+                    --arg text "${receipt_text}" \
                     '{chat_id: $chat_id, message_id: $msg_id, text: $text, parse_mode: "MarkdownV2"}')
                 telegram_api "editMessageText" "${edit_body}" >/dev/null
-                log "Telegram: DENIED by human"
+                TELEGRAM_DENIED_BY="human"
+                log "Telegram: DENIED by human (${elapsed_s}s)"
                 return 1
             fi
 
@@ -682,13 +751,23 @@ telegram_ask() {
 
     # Timeout
     log "Telegram: TIMED OUT after ${TELEGRAM_TIMEOUT_S}s"
+    local receipt_text="⏰ *TIMED OUT*
+
+*Tool:* \`${tool_name}\`
+*Detail:* \`${display}\`
+*Risk:* ${risk_score}/100
+*Rule:* ${rule}
+*Timeout:* ${TELEGRAM_TIMEOUT_S}s — action blocked"
+    # shellcheck disable=SC2016
+    receipt_text=$(echo "${receipt_text}" | sed 's/[_\[\]()~>#+=|{}.!-]/\\&/g' | sed 's/\\`/`/g' | sed 's/\\*/*/g')
     local timeout_body
     timeout_body=$(jq -n -c \
         --arg chat_id "${TELEGRAM_CHAT_ID}" \
         --argjson msg_id "${msg_id}" \
-        --arg text "⏰ *TIMED OUT* — \`${display}\` — action blocked" \
+        --arg text "${receipt_text}" \
         '{chat_id: $chat_id, message_id: $msg_id, text: $text, parse_mode: "MarkdownV2"}')
     telegram_api "editMessageText" "${timeout_body}" >/dev/null
+    TELEGRAM_DENIED_BY="timeout"
     return 1
 }
 
@@ -696,6 +775,7 @@ telegram_ask() {
 
 main() {
     # Keepalive touch — update active flag for menu bar on every invocation
+    # shellcheck disable=SC2005
     echo "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > "${PROJECT_DIR}/var/log/.gate-active" 2>/dev/null
 
     # 1. Read hook input from stdin
@@ -828,11 +908,12 @@ main() {
                     action_id=$(gen_id)
 
                     if telegram_ask "${action_id}" "${tool_name}" "${TOOL_DISPLAY}" "${MATCHED_RULE}" "${MATCHED_RISK_SCORE}" "${MATCHED_SEVERITY}"; then
-                        emit_event "${DOMAIN}" "${TOOL_DISPLAY}" "authorized" "${DETAIL}" "${MATCHED_RULE}" "${MATCHED_SEVERITY}" "${MATCHED_RISK_SCORE}"
+                        emit_event "${DOMAIN}" "${TOOL_DISPLAY}" "authorized" "${DETAIL}" "${MATCHED_RULE}" "${MATCHED_SEVERITY}" "${MATCHED_RISK_SCORE}" "human"
                         respond_allow
                     else
-                        emit_event "${DOMAIN}" "${TOOL_DISPLAY}" "denied" "${DETAIL}" "${MATCHED_RULE}" "${MATCHED_SEVERITY}" "${MATCHED_RISK_SCORE}"
-                        respond_deny "Denied by human or timed out (rule ${MATCHED_RULE})"
+                        local denied_by="${TELEGRAM_DENIED_BY:-unknown}"
+                        emit_event "${DOMAIN}" "${TOOL_DISPLAY}" "denied" "${DETAIL}" "${MATCHED_RULE}" "${MATCHED_SEVERITY}" "${MATCHED_RISK_SCORE}" "${denied_by}"
+                        respond_deny "Denied by ${denied_by} (rule ${MATCHED_RULE})"
                     fi
                     ;;
             esac
