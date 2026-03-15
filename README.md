@@ -55,22 +55,30 @@ ZLAR-CC Gateway
     └── RED    → two-step confirmation on Telegram
 ```
 
-### All 10 Claude Code Tools Governed
+### All Claude Code Tools Governed
 
-| Tool | Internal Route | Default Behavior |
-|------|---------------|-----------------|
-| `Bash` | `POST /exec` | Always gated |
-| `Write` | `POST /file/write` | Policy-dependent |
-| `Edit` | `POST /file/write` | Policy-dependent |
-| `Read` | `GET /file/read` | Sensitive paths gated |
-| `Glob` | `GET /file/read` | Sensitive paths gated |
-| `Grep` | `GET /file/read` | Sensitive paths gated |
-| `NotebookEdit` | `POST /file/write` | Policy-dependent |
-| `Task` | `POST /exec` | Always gated |
-| `WebFetch` | `POST /net/request` | Always gated |
-| `WebSearch` | `POST /net/request` | Always gated |
+| Tool | Domain | Default Behavior |
+|------|--------|-----------------|
+| `Bash` | `bash` | Always gated |
+| `Write` | `write` | Policy-dependent |
+| `Edit` | `edit` | Policy-dependent |
+| `Read` | `read` | Sensitive paths gated |
+| `Glob` | `glob` | Sensitive paths gated |
+| `Grep` | `grep` | Sensitive paths gated |
+| `NotebookEdit` | `notebook` | Policy-dependent |
+| `Task` / `Agent` | `agent` | Always gated |
+| `WebFetch` | `webfetch` | Always gated |
+| `WebSearch` | `websearch` | Always gated |
+| `TodoWrite`, `AskUserQuestion`, `EnterPlanMode`, `TaskOutput`, `TaskStop`, `Skill`, `EnterWorktree`, `ExitWorktree` | `internal` | **Pass-through — zero overhead** |
+| `mcp__<server>__<tool>` | `mcp` | **Ask by default** — third-party MCP servers require approval |
 
 Unknown tools are denied by default. If Claude Code ships new tools tomorrow, they're blocked until you add a rule.
+
+**MCP tool classification:** Every call to a third-party MCP server (e.g. `mcp__filesystem__read_file`) triggers an approval request. Tools are classified at the server level — all tools from a given MCP server get the same treatment. Per-tool allowlisting is a future feature.
+
+**Internal tool fast-path:** Conversation-internal tools (todo lists, plan mode, user questions) pass instantly without policy evaluation. Governance doesn't slow you down for things that don't affect your filesystem or network.
+
+**Denied-by distinction:** Every deny response includes a `denied_by` field — `[human]`, `[timeout]`, `[policy]`, `[rate_limit]`, or `[gate_error]`. Your agent knows exactly why it was blocked.
 
 ---
 
@@ -261,6 +269,13 @@ scripts/        — Start, stop, harden, unharden
 - **Not a sandbox.** ZLAR-CC doesn't virtualize or contain. It gates. Claude Code operates on your real system — with a human-controlled boundary at the execution layer.
 
 ---
+
+## Known Limitations
+
+- **MCP tools are classified at the server level, not the individual tool level.** All tools from a given MCP server get the same treatment. Per-tool allowlisting is a future feature.
+- **Policy verification requires the public key file.** If `etc/keys/policy-signing.pub` is missing, unsigned policies are accepted with a warning.
+- **Away mode queuing is in-memory.** Queued actions during away mode are not persisted across gate restarts.
+- **Session write limits reset on gate restart.** The counter is per-process, not persistent.
 
 ## The ZLAR Family
 
