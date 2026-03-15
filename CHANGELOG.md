@@ -4,6 +4,32 @@ All notable changes to ZLAR-CC will be documented in this file.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [2.4.0] — 2026-03-15
+
+### Added
+- **MCP tool classification** — `mcp__<server>__<tool>` calls are classified as domain `mcp` and trigger approval by default (R095). Third-party MCP servers are now first-class governance subjects.
+- **Internal tool fast-path** — `TodoWrite`, `AskUserQuestion`, `EnterPlanMode`, `ExitPlanMode`, `TaskOutput`, `TaskStop`, `Skill`, `EnterWorktree`, `ExitWorktree` are reclassified as domain `internal` and auto-allowed without policy evaluation. Zero overhead for conversation-internal operations.
+- **`denied_by` field in deny responses** — every deny now includes `[human]`, `[timeout]`, `[policy]`, `[rate_limit]`, or `[gate_error]` so the agent knows exactly why it was blocked.
+- **`authorizer` field in audit events** — all events now record who authorized or denied the action: `human:<chat_id>`, `gate`, `policy`, `gate:timeout`, `gate:rate_limit`, `gate:error`, `watchdog`.
+- **ERR trap** — unexpected failures in the gate script now deny + log the line number instead of silently passing or crashing.
+- **Private temp directory** — gate uses `var/tmp` (chmod 700) instead of `/tmp`. World-readable temp files no longer possible.
+- **Audit file rotation** — `audit.jsonl` rotates automatically at 10MB.
+- **Atomic session write counters** — flock-based increment with fallback for systems without flock.
+- **Distinct `telegram_ask()` exit codes** — 0=approved, 1=human denied, 2=send failure, 3=rate limited, 4=timeout.
+- **Session ID in Telegram receipts** — approve/deny receipt messages now include the Claude Code session ID.
+
+### Changed
+- **R012 narrowed** — regex now targets specific ZLAR system paths only, not the entire ZLAR folder. Fixes field-test finding where R012 blocked all Bash commands in the ZLAR project directory.
+- **Telegram title** — approval requests now show "ZLAR Gate" instead of "ZLAR Ask".
+- **Newline injection hardening** — Bash command display collapses newlines before classification (S2 fix).
+- **`TodoWrite`, `TaskOutput`, `TaskStop`, `AskUserQuestion`, `EnterPlanMode`, `ExitPlanMode`, `Skill`, `EnterWorktree`, `ExitWorktree`** reclassified from `state`/`agent` to `internal` domain.
+
+### Policy
+- R012 regex narrowed (see above)
+- R062 added: state domain allow rule (TodoWrite, TaskOutput, plan mode tools)
+- R095 added: MCP tools → ask by default
+
+
 ---
 
 ## [Unreleased]
