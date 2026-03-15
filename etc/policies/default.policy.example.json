@@ -1,8 +1,8 @@
 {
-  "version": "2.1.0",
+  "version": "2.4.0",
   "created_at": "2026-03-01T00:00:00Z",
   "author": "your-username",
-  "description": "ZLAR v2.1 \u2014 Claude Code hook policy. Deny-first rule ordering.",
+  "description": "ZLAR-CC Gate policy v2.4.0 \u2014 MCP classification, R012 narrowed",
   "signature": {
     "algorithm": "ed25519",
     "public_key": "GENERATE_WITH_bin/zlar-policy_keygen",
@@ -15,6 +15,46 @@
     "ask": 80
   },
   "rules": [
+    {
+      "id": "R012",
+      "description": "Protect ZLAR system files \u2014 gate config, policy, hooks, audit logs",
+      "priority": 12,
+      "conditions": [
+        {
+          "field": "domain",
+          "op": "in",
+          "value": [
+            "write",
+            "edit"
+          ]
+        },
+        {
+          "field": "path",
+          "op": "regex",
+          "pattern": "/(bin|etc|config|scripts)/zlar-|/\\.claude/(hooks|settings)|policy.*\\.json|pf-zlar|pf\\.conf|gate\\.json|/var/log/(audit|gate)"
+        }
+      ],
+      "action": "ask",
+      "severity": "critical",
+      "risk_score": 80,
+      "audit": true
+    },
+    {
+      "id": "R095",
+      "description": "MCP tools \u2014 third-party MCP server tools require approval",
+      "priority": 95,
+      "conditions": [
+        {
+          "field": "domain",
+          "op": "eq",
+          "value": "mcp"
+        }
+      ],
+      "action": "ask",
+      "severity": "warn",
+      "risk_score": 55,
+      "audit": true
+    },
     {
       "id": "R001",
       "enabled": true,
@@ -121,27 +161,6 @@
       }
     },
     {
-      "id": "R016",
-      "enabled": true,
-      "description": "Network send commands require approval",
-      "domain": "bash",
-      "action": "ask",
-      "severity": "warn",
-      "audit": true,
-      "match": {
-        "detail": {
-          "command": {
-            "regex": "\\b(curl|wget|ssh|scp|rsync|nc|ncat|netcat)\\b"
-          }
-        }
-      },
-      "risk_score": {
-        "irreversibility": 60,
-        "consequence": 70,
-        "blast_radius": 80
-      }
-    },
-    {
       "id": "R014",
       "enabled": true,
       "description": "Git push requires approval",
@@ -160,6 +179,27 @@
         "irreversibility": 70,
         "consequence": 60,
         "blast_radius": 75
+      }
+    },
+    {
+      "id": "R016",
+      "enabled": true,
+      "description": "Network send commands require approval",
+      "domain": "bash",
+      "action": "ask",
+      "severity": "warn",
+      "audit": true,
+      "match": {
+        "detail": {
+          "command": {
+            "regex": "\\b(curl|wget|ssh|scp|rsync|nc|ncat|netcat)\\b"
+          }
+        }
+      },
+      "risk_score": {
+        "irreversibility": 60,
+        "consequence": 70,
+        "blast_radius": 80
       }
     },
     {
@@ -324,6 +364,20 @@
       }
     },
     {
+      "id": "R062",
+      "enabled": true,
+      "description": "Allow TodoWrite, TaskOutput, plan mode, user questions \u2014 low-risk state management",
+      "domain": "state",
+      "action": "allow",
+      "severity": "info",
+      "audit": true,
+      "risk_score": {
+        "irreversibility": 0,
+        "consequence": 5,
+        "blast_radius": 0
+      }
+    },
+    {
       "id": "R090",
       "enabled": true,
       "description": "Web fetch \u2014 requires approval",
@@ -338,20 +392,6 @@
         "irreversibility": 30,
         "consequence": 50,
         "blast_radius": 70
-      }
-    },
-    {
-      "id": "R060",
-      "enabled": true,
-      "description": "Allow TodoWrite, TaskOutput, plan mode, user questions \u2014 low-risk state management",
-      "domain": "state",
-      "action": "allow",
-      "severity": "info",
-      "audit": true,
-      "risk_score": {
-        "irreversibility": 0,
-        "consequence": 5,
-        "blast_radius": 0
       }
     },
     {
