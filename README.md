@@ -214,9 +214,17 @@ This handles everything:
 # 3. Review etc/policies/active.policy.json — customize rules
 #    Then re-sign: bin/zlar-policy sign --input etc/policies/active.policy.json --key ~/.zlar-signing.key
 
-# 4. Verify anytime
+# 4. After signing, extract your public key (required — without this the gate blocks everything)
+echo "-----BEGIN PUBLIC KEY-----" > etc/keys/policy-signing.pub
+python3 -c "import sys,json; print(json.load(sys.stdin)['signature']['public_key'])" \
+  < etc/policies/active.policy.json >> etc/keys/policy-signing.pub
+echo "-----END PUBLIC KEY-----" >> etc/keys/policy-signing.pub
+
+# 5. Verify anytime
 ./scripts/zlar-start.sh
 ```
+
+> **Important:** The public key extraction step (step 4) is required after every `zlar-policy sign`. If you skip it, the gate verifies signatures against the template key and blocks all actions with "policy error".
 
 Open Claude Code. ZLAR-CC is now gating every tool call. You'll see approval requests on Telegram when Claude Code tries protected actions.
 
@@ -269,6 +277,58 @@ scripts/        — Start, stop, harden, unharden
 - **Not a sandbox.** ZLAR-CC doesn't virtualize or contain. It gates. Claude Code operates on your real system — with a human-controlled boundary at the execution layer.
 
 ---
+
+## Troubleshooting
+
+**Gate blocks everything with "ZLAR policy error. All actions blocked."**
+
+The public key file (`etc/keys/policy-signing.pub`) doesn't match the key that signed the active policy. This happens when you skip the key extraction step after signing.
+
+Run:
+```bash
+echo "-----BEGIN PUBLIC KEY-----" > etc/keys/policy-signing.pub
+python3 -c "import sys,json; print(json.load(sys.stdin)['signature']['public_key'])" \
+  < etc/policies/active.policy.json >> etc/keys/policy-signing.pub
+echo "-----END PUBLIC KEY-----" >> etc/keys/policy-signing.pub
+rm -f var/log/.policy-cache
+```
+
+---
+
+**Gate crashes / returns no output**
+
+Check that the hook wrapper points to the correct gate location:
+```bash
+# Should print the path to your gate script
+grep GATE ~/.claude/hooks/zlar-gate.sh
+```
+
+If the path is wrong, open `~/.claude/hooks/zlar-gate.sh` and set:
+```bash
+PROJECT_DIR="/path/to/your/ClaudeCode_ZLAR-CC"
+```
+
+Verify the gate is reachable:
+```bash
+ls -la /path/to/ClaudeCode_ZLAR-CC/bin/zlar-gate
+```
+
+---
+
+**Claude Code shows "unbound variable: canon_file"**
+
+You're running a pre-v2.4.0 gate build that had a RETURN trap bug. Update:
+```bash
+git pull origin main
+```
+
+---
+
+**Telegram approval never arrives**
+
+- Check `ZLAR_TELEGRAM_TOKEN` is set in `.env` (not `.env.example`)
+- Verify your `chat_id` in `etc/gate.json` — message [@userinfobot](https://t.me/userinfobot) to confirm yours
+- Check `var/log/gate.log` for errors: `tail -50 var/log/gate.log`
 
 ## Known Limitations
 
