@@ -332,9 +332,9 @@ load_policy() {
 
         # Create canonical form
         local canon_file hash_file sig_file
-        canon_file=$(mktemp /tmp/zlar-gate-canon.XXXXXX)
-        hash_file=$(mktemp /tmp/zlar-gate-hash.XXXXXX)
-        sig_file=$(mktemp /tmp/zlar-gate-sig.XXXXXX)
+        canon_file=$(mktemp "${TEMP_DIR}/zlar-gate-canon.XXXXXX")
+        hash_file=$(mktemp "${TEMP_DIR}/zlar-gate-hash.XXXXXX")
+        sig_file=$(mktemp "${TEMP_DIR}/zlar-gate-sig.XXXXXX")
 
         jq '.signature.value = ""' "${POLICY_FILE}" > "${canon_file}" 2>/dev/null
         shasum -a 256 "${canon_file}" | awk '{print $1}' | tr -d '\n' > "${hash_file}"
