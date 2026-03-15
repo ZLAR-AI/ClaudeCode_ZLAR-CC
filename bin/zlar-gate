@@ -13,6 +13,9 @@
 
 set -euo pipefail
 
+# ERR trap — if anything fails unexpectedly, deny + log line number
+trap 'echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] ERR at line ${LINENO} — denying" >> "${LOG_FILE:-/dev/null}" 2>/dev/null; respond_deny "Gate internal error at line ${LINENO}"; exit 0' ERR
+
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_DIR="$(dirname "${SCRIPT_DIR}")"
 
@@ -27,6 +30,9 @@ AWAY_QUEUE="${PROJECT_DIR}/var/log/away-queue.jsonl"
 LOCKDOWN_FILE="${PROJECT_DIR}/var/log/watchdog.lock"
 SESSION_DIR="${PROJECT_DIR}/var/log/sessions"
 LOG_FILE="${PROJECT_DIR}/var/log/gate.log"
+TEMP_DIR="${PROJECT_DIR}/var/tmp"
+mkdir -p "${TEMP_DIR}" && chmod 700 "${TEMP_DIR}" 2>/dev/null || true
+trap 'rm -f "${TEMP_DIR}"/zlar-gate-$$.* 2>/dev/null || true' EXIT
 
 # Load overrides from gate.json if present
 if [ -f "${GATE_CONFIG}" ] && command -v jq &>/dev/null; then
@@ -63,6 +69,10 @@ fi
 
 # Ensure log directory exists
 mkdir -p "$(dirname "${AUDIT_FILE}")"
+# Rotate audit file at 10MB
+if [ -f "${AUDIT_FILE}" ] && [ "$(wc -c < "${AUDIT_FILE}" 2>/dev/null || echo 0)" -gt 10485760 ]; then
+    mv "${AUDIT_FILE}" "${AUDIT_FILE}.$(date +%Y%m%d%H%M%S)" 2>/dev/null || true
+fi
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # STARTUP — handled by wrapper (~/.claude/zlar-gate.sh).
@@ -168,7 +178,8 @@ translate_tool() {
         Bash)
             DOMAIN="bash"
             DETAIL=$(echo "${tool_input}" | jq -c '{command: (.command // ""), cwd: (.cwd // "")}' 2>/dev/null || echo '{"command":""}')
-            TOOL_DISPLAY=$(echo "${tool_input}" | jq -r '.command // ""' 2>/dev/null | head -c 200)
+            # S2: Newline injection fix — collapse newlines before classification
+            TOOL_DISPLAY=$(echo "${tool_input}" | jq -r '.command // ""' 2>/dev/null | tr '\n\r' '  ' | head -c 200)
             ;;
         Write)
             DOMAIN="write"
@@ -218,40 +229,50 @@ translate_tool() {
             TOOL_DISPLAY=$(echo "${tool_input}" | jq -r '.query // ""' 2>/dev/null)
             ;;
         TodoWrite)
-            DOMAIN="state"
+            DOMAIN="internal"
             DETAIL=$(echo "${tool_input}" | jq -c '{todos: ((.todos // []) | length)}' 2>/dev/null || echo '{"todos":0}')
             TOOL_DISPLAY="TodoWrite ($(echo "${tool_input}" | jq -r '(.todos // []) | length' 2>/dev/null) items)"
             ;;
         TaskOutput)
-            DOMAIN="state"
+            DOMAIN="internal"
             DETAIL=$(echo "${tool_input}" | jq -c '{task_id: (.task_id // "")}' 2>/dev/null || echo '{"task_id":""}')
             TOOL_DISPLAY=$(echo "${tool_input}" | jq -r '.task_id // "task"' 2>/dev/null)
             ;;
         TaskStop)
-            DOMAIN="state"
+            DOMAIN="internal"
             DETAIL=$(echo "${tool_input}" | jq -c '{task_id: (.task_id // "")}' 2>/dev/null || echo '{"task_id":""}')
             TOOL_DISPLAY="Stop: $(echo "${tool_input}" | jq -r '.task_id // "task"' 2>/dev/null)"
             ;;
         Skill)
-            DOMAIN="agent"
+            DOMAIN="internal"
             DETAIL=$(echo "${tool_input}" | jq -c '{skill: (.skill // ""), args: (.args // "")}' 2>/dev/null || echo '{"skill":""}')
             TOOL_DISPLAY="Skill: $(echo "${tool_input}" | jq -r '.skill // "unknown"' 2>/dev/null)"
             ;;
         EnterPlanMode|ExitPlanMode)
-            DOMAIN="state"
+            DOMAIN="internal"
             DETAIL=$(jq -n -c --arg mode "${tool_name}" '{mode: $mode}')
             TOOL_DISPLAY="${tool_name}"
             ;;
         AskUserQuestion)
-            DOMAIN="state"
+            DOMAIN="internal"
             DETAIL=$(echo "${tool_input}" | jq -c '{questions: ((.questions // []) | length)}' 2>/dev/null || echo '{"questions":0}')
             TOOL_DISPLAY="AskUserQuestion"
             ;;
         EnterWorktree|ExitWorktree)
-            DOMAIN="state"
+            DOMAIN="internal"
             DETAIL=$(echo "${tool_input}" | jq -c '.' 2>/dev/null || echo '{}')
             TOOL_DISPLAY="${tool_name}"
             ;;
+        mcp__*)
+            DOMAIN="mcp"
+            # Extract server and tool from mcp__<server>__<tool> format
+            local mcp_rest="${tool_name#mcp__}"
+            local mcp_server="${mcp_rest%%__*}"
+            local mcp_tool="${mcp_rest#*__}"
+            DETAIL=$(jq -n -c --arg server "${mcp_server}" --arg tool "${mcp_tool}" --arg full "${tool_name}"                 '{server: $server, tool: $tool, full_name: $full}')
+            TOOL_DISPLAY="MCP:${mcp_server}/${mcp_tool}"
+            ;;
+
         *)
             DOMAIN="unknown"
             # T2-10: Safe JSON construction for unknown tools (was string interpolation)
@@ -588,7 +609,8 @@ telegram_ask() {
 
     if [ -z "${TELEGRAM_TOKEN}" ]; then
         log "No Telegram token — denying ask action"
-        return 1
+        TELEGRAM_DENIED_BY="send_failure"
+        return 2
     fi
 
     # H3: Rate limiting — deny if asks are coming too fast
@@ -601,7 +623,8 @@ telegram_ask() {
         local elapsed_ms=$((now_ms - last_ms))
         if [ "${elapsed_ms}" -lt "${TELEGRAM_FLOOD_GUARD_MS}" ]; then
             log "RATE LIMITED: ${elapsed_ms}ms since last ask (guard=${TELEGRAM_FLOOD_GUARD_MS}ms)"
-            return 1
+            TELEGRAM_DENIED_BY="rate_limit"
+            return 3
         fi
     fi
     echo "${now_ms}" > "${RATE_LIMIT_FILE}" 2>/dev/null || true
@@ -611,7 +634,7 @@ telegram_ask() {
     [ "${severity}" = "critical" ] && emoji="🔴"
     [ "${severity}" = "warn" ] && emoji="🟡"
 
-    local text="${emoji} *ZLAR Ask*
+    local text="${emoji} *ZLAR Gate*
 
 *Tool:* \`${tool_name}\`
 *Detail:* \`${display}\`
@@ -645,7 +668,8 @@ telegram_ask() {
 
     if [ -z "${msg_id}" ]; then
         log "Failed to send Telegram message: ${send_result}"
-        return 1
+        TELEGRAM_DENIED_BY="send_failure"
+        return 2
     fi
 
     log "Telegram ask sent: msg_id=${msg_id}, action_id=${action_id}"
@@ -704,6 +728,7 @@ telegram_ask() {
 *Detail:* \`${display}\`
 *Risk:* ${risk_score}/100
 *Rule:* ${rule}
+*Session:* \`${SESSION_ID}\`
 *Decision:* Approved @ ${approve_ts}
 *Latency:* ${elapsed_s}s"
                 # shellcheck disable=SC2016
@@ -729,6 +754,7 @@ telegram_ask() {
 *Detail:* \`${display}\`
 *Risk:* ${risk_score}/100
 *Rule:* ${rule}
+*Session:* \`${SESSION_ID}\`
 *Decision:* Denied @ ${deny_ts}
 *Latency:* ${elapsed_s}s"
                 # shellcheck disable=SC2016
@@ -742,7 +768,7 @@ telegram_ask() {
                 telegram_api "editMessageText" "${edit_body}" >/dev/null
                 TELEGRAM_DENIED_BY="human"
                 log "Telegram: DENIED by human (${elapsed_s}s)"
-                return 1
+                return 1  # exit code 1 = human denied
             fi
 
             j=$((j + 1))
@@ -768,7 +794,7 @@ telegram_ask() {
         '{chat_id: $chat_id, message_id: $msg_id, text: $text, parse_mode: "MarkdownV2"}')
     telegram_api "editMessageText" "${timeout_body}" >/dev/null
     TELEGRAM_DENIED_BY="timeout"
-    return 1
+    return 4  # exit code 4 = timeout
 }
 
 # ─── Main Gate Logic ────────────────────────────────────────────────────────
@@ -828,6 +854,13 @@ main() {
     translate_tool "${tool_name}" "${tool_input}"
     log "Tool: ${tool_name} → domain=${DOMAIN}, display=${TOOL_DISPLAY}"
 
+    # 5a. Internal fast-path — no policy evaluation needed for conversation-internal tools
+    if [ "${DOMAIN}" = "internal" ]; then
+        emit_event "${DOMAIN}" "${TOOL_DISPLAY}" "allow" "${DETAIL}" "internal-fast-path" "info" 0 "gate"
+        respond_allow
+        return
+    fi
+
     # 4. Load and verify policy
     if ! load_policy; then
         log "Policy load failed — denying all"
@@ -845,12 +878,24 @@ main() {
         mkdir -p "${SESSION_DIR}" 2>/dev/null || true
         local count_file="${SESSION_DIR}/${SESSION_ID}.count"
         local write_count=0
-        if [ -f "${count_file}" ]; then
-            write_count=$(cat "${count_file}" 2>/dev/null | tr -d '[:space:]')
-            write_count=${write_count:-0}
+        # Atomic increment via flock (with fallback if flock unavailable)
+        if command -v flock &>/dev/null; then
+            local lock_file="${SESSION_DIR}/${SESSION_ID}.lock"
+            write_count=$(flock -x "${lock_file}" -c "
+                count=0
+                [ -f '${count_file}' ] && count=\$(cat '${count_file}' 2>/dev/null | tr -d '[:space:]') && count=\${count:-0}
+                count=\$((count + 1))
+                echo \$count > '${count_file}'
+                echo \$count
+            " 2>/dev/null || echo 1)
+        else
+            if [ -f "${count_file}" ]; then
+                write_count=$(cat "${count_file}" 2>/dev/null | tr -d '[:space:]')
+                write_count=${write_count:-0}
+            fi
+            write_count=$((write_count + 1))
+            echo "${write_count}" > "${count_file}" 2>/dev/null || true
         fi
-        write_count=$((write_count + 1))
-        echo "${write_count}" > "${count_file}" 2>/dev/null || true
         if [ "${write_count}" -gt "${SESSION_WRITE_LIMIT}" ]; then
             emit_event "${DOMAIN}" "${TOOL_DISPLAY}" "deny" "${DETAIL}" "session-write-limit" "critical" 90
             respond_deny "Session write limit exceeded (${write_count}/${SESSION_WRITE_LIMIT})"
@@ -907,13 +952,17 @@ main() {
                     local action_id
                     action_id=$(gen_id)
 
-                    if telegram_ask "${action_id}" "${tool_name}" "${TOOL_DISPLAY}" "${MATCHED_RULE}" "${MATCHED_RISK_SCORE}" "${MATCHED_SEVERITY}"; then
-                        emit_event "${DOMAIN}" "${TOOL_DISPLAY}" "authorized" "${DETAIL}" "${MATCHED_RULE}" "${MATCHED_SEVERITY}" "${MATCHED_RISK_SCORE}" "human"
+                    local ask_exit=0
+                    telegram_ask "${action_id}" "${tool_name}" "${TOOL_DISPLAY}" "${MATCHED_RULE}" "${MATCHED_RISK_SCORE}" "${MATCHED_SEVERITY}" || ask_exit=$?
+                    if [ "${ask_exit}" -eq 0 ]; then
+                        emit_event "${DOMAIN}" "${TOOL_DISPLAY}" "authorized" "${DETAIL}" "${MATCHED_RULE}" "${MATCHED_SEVERITY}" "${MATCHED_RISK_SCORE}" "human:${TELEGRAM_CHAT_ID}"
                         respond_allow
                     else
                         local denied_by="${TELEGRAM_DENIED_BY:-unknown}"
-                        emit_event "${DOMAIN}" "${TOOL_DISPLAY}" "denied" "${DETAIL}" "${MATCHED_RULE}" "${MATCHED_SEVERITY}" "${MATCHED_RISK_SCORE}" "${denied_by}"
-                        respond_deny "Denied by ${denied_by} (rule ${MATCHED_RULE})"
+                        local authorizer_tag="gate:${denied_by}"
+                        [ "${ask_exit}" -eq 1 ] && authorizer_tag="human:${TELEGRAM_CHAT_ID}"
+                        emit_event "${DOMAIN}" "${TOOL_DISPLAY}" "denied" "${DETAIL}" "${MATCHED_RULE}" "${MATCHED_SEVERITY}" "${MATCHED_RISK_SCORE}" "${authorizer_tag}"
+                        respond_deny "[${denied_by}] Denied by ${denied_by} (rule ${MATCHED_RULE})"
                     fi
                     ;;
             esac
